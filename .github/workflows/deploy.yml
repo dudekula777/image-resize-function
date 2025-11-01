@@ -60,7 +60,7 @@ jobs:
       - name: Verify Azure account
         run: az account show
 
-      # 🚀 Terraform Init (fixed & upgraded)
+      # 🚀 Terraform Init
       - name: Terraform Init
         working-directory: ./terraform
         run: |
@@ -79,6 +79,20 @@ jobs:
           terraform plan -input=false \
             -var="storage_account_name=stimgresize" \
             -var="function_app_name=func-imgresize"
+
+      # 🧩 Import existing Resource Group if already exists
+      - name: Import Resource Group if exists
+        working-directory: ./terraform
+        run: |
+          set +e
+          az group show --name ImageResizeRG --output none
+          if [ $? -eq 0 ]; then
+            echo "Resource Group already exists — importing to Terraform..."
+            terraform import azurerm_resource_group.main "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/ImageResizeRG" || true
+          else
+            echo "Resource Group does not exist — will be created by Terraform."
+          fi
+          set -e
 
       # ⚙️ Terraform Apply (only on main branch)
       - name: Terraform Apply
