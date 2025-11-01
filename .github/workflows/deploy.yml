@@ -25,19 +25,25 @@ jobs:
       with:
         terraform_version: '1.5.0'
 
-    # ✅ Use Azure credentials from GitHub Secrets
+    # ✅ Login to Azure using Service Principal credentials (from GitHub secret)
     - name: Configure Azure credentials
       uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    # ✅ Export Terraform environment variables from GitHub secrets
+    # ✅ Export Terraform environment variables from GitHub Secrets
     - name: Set Terraform environment variables
+      shell: bash
       run: |
-        echo "ARM_SUBSCRIPTION_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}" >> $GITHUB_ENV
-        echo "ARM_TENANT_ID=${{ secrets.ARM_TENANT_ID }}" >> $GITHUB_ENV
-        echo "ARM_CLIENT_ID=${{ secrets.ARM_CLIENT_ID }}" >> $GITHUB_ENV
-        echo "ARM_CLIENT_SECRET=${{ secrets.ARM_CLIENT_SECRET }}" >> $GITHUB_ENV
+        {
+          echo "ARM_SUBSCRIPTION_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}"
+          echo "ARM_TENANT_ID=${{ secrets.ARM_TENANT_ID }}"
+          echo "ARM_CLIENT_ID=${{ secrets.ARM_CLIENT_ID }}"
+          echo "ARM_CLIENT_SECRET=${{ secrets.ARM_CLIENT_SECRET }}"
+        } >> $GITHUB_ENV
+      # (Optional) mask sensitive data so it won’t appear in logs
+      env:
+        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
 
     - name: Terraform Init
       working-directory: ./terraform
@@ -49,11 +55,21 @@ jobs:
 
     - name: Terraform Plan
       working-directory: ./terraform
+      env:
+        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
       run: terraform plan -var="storage_account_name=stimgresize" -var="function_app_name=func-imgresize"
 
     - name: Terraform Apply
       working-directory: ./terraform
       if: github.ref == 'refs/heads/main'
+      env:
+        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
       run: terraform apply -auto-approve -var="storage_account_name=stimgresize" -var="function_app_name=func-imgresize"
 
   deploy-function:
