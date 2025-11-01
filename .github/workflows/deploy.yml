@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: read
-  id-token: none   # Using client secret, not OIDC
+  id-token: none
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: 'src'
@@ -32,7 +32,7 @@ jobs:
         with:
           terraform_version: '1.5.0'
 
-      # 🔐 Login to Azure using Service Principal
+      # 🔐 Login to Azure
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -44,30 +44,49 @@ jobs:
               "tenantId": "${{ secrets.ARM_TENANT_ID }}"
             }
           auth-type: SERVICE_PRINCIPAL
-          environment: azurecloud
-          enable-AzPSSession: false
 
-      # 🌍 Export Terraform environment variables
+      # 🌍 Export environment variables
       - name: Set Terraform environment variables
         run: |
           echo "ARM_SUBSCRIPTION_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}" >> $GITHUB_ENV
           echo "ARM_TENANT_ID=${{ secrets.ARM_TENANT_ID }}" >> $GITHUB_ENV
           echo "ARM_CLIENT_ID=${{ secrets.ARM_CLIENT_ID }}" >> $GITHUB_ENV
           echo "ARM_CLIENT_SECRET=${{ secrets.ARM_CLIENT_SECRET }}" >> $GITHUB_ENV
-          echo "TF_PLUGIN_CACHE_DIR=$HOME/.terraform.d/plugin-cache" >> $GITHUB_ENV
 
-      # 🧠 Verify Azure context
+      # ✅ Verify Azure Login
       - name: Verify Azure account
         run: az account show
 
       # 🚀 Terraform Init
       - name: Terraform Init
         working-directory: ./terraform
-        run: |
-          mkdir -p $TF_PLUGIN_CACHE_DIR
-          terraform init -input=false -upgrade
+        run: terraform init -input=false -upgrade
 
-      # ✅ Terraform Validate
+      # 🧩 Import existing resources if found
+      - name: Import existing Azure resources
+        working-directory: ./terraform
+        run: |
+          set -e
+          echo "🔎 Checking for existing resources to import..."
+          
+          # Resource Group
+          if az group show --name ImageResizeRG &>/dev/null; then
+            terraform import azurerm_resource_group.main "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/ImageResizeRG" || true
+          fi
+          
+          # Storage Account
+          if az storage account show --name stimgresize --resource-group ImageResizeRG &>/dev/null; then
+            terraform import azurerm_storage_account.main "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/ImageResizeRG/providers/Microsoft.Storage/storageAccounts/stimgresize" || true
+          fi
+          
+          # Application Insights
+          if az monitor app-insights component show --app app-insights-image-resize --resource-group ImageResizeRG &>/dev/null; then
+            terraform import azurerm_application_insights.main "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/ImageResizeRG/providers/microsoft.insights/components/app-insights-image-resize" || true
+          fi
+          
+          echo "✅ Import step completed."
+
+      # ✅ Validate Terraform config
       - name: Terraform Validate
         working-directory: ./terraform
         run: terraform validate
@@ -78,30 +97,18 @@ jobs:
         run: |
           terraform plan -input=false \
             -var="storage_account_name=stimgresize" \
-            -var="function_app_name=func-imgresize"
+            -var="function_app_name=func-imgresize" \
+            -var="service_plan_sku=B1"
 
-      # 🧩 Import existing Resource Group if already exists
-      - name: Import Resource Group if exists
-        working-directory: ./terraform
-        run: |
-          set +e
-          az group show --name ImageResizeRG --output none
-          if [ $? -eq 0 ]; then
-            echo "Resource Group already exists — importing to Terraform..."
-            terraform import azurerm_resource_group.main "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/ImageResizeRG" || true
-          else
-            echo "Resource Group does not exist — will be created by Terraform."
-          fi
-          set -e
-
-      # ⚙️ Terraform Apply (only on main branch)
+      # ⚙️ Terraform Apply
       - name: Terraform Apply
         working-directory: ./terraform
         if: github.ref == 'refs/heads/main'
         run: |
           terraform apply -auto-approve -input=false \
             -var="storage_account_name=stimgresize" \
-            -var="function_app_name=func-imgresize"
+            -var="function_app_name=func-imgresize" \
+            -var="service_plan_sku=B1"
 
   deploy-function:
     name: Deploy Function Code
@@ -110,24 +117,20 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      # 🧩 Checkout latest code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 🐍 Setup Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # 📦 Install dependencies
-      - name: Restore dependencies
+      - name: Install dependencies
         working-directory: ./src/function_app
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # ☁️ Deploy to Azure Function App
       - name: Deploy to Azure Function App
         uses: azure/functions-action@v1
         id: fa
@@ -136,8 +139,5 @@ jobs:
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
 
-      # ✅ Verify deployment
       - name: Verify deployment
-        run: |
-          echo "✅ Function app deployed successfully!"
-          echo "App name: func-imgresize"
+        run: echo "✅ Function app deployed successfully!"
