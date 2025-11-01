@@ -1,0 +1,5 @@
+resource_group_name = "ImageResizeRG"
+location = "East US"
+storage_account_name = "stimgresize"
+function_app_name = "funcimgresize"
+python_version = "3.11"
