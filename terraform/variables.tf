@@ -81,3 +81,14 @@ variable "client_secret" {
   type        = string
   default     = ""
 }
+variable "app_insights_name" {
+  description = "Name of the Application Insights instance"
+  type        = string
+  default     = "app-insights-image-resize"
+}
+
+variable "service_plan_name" {
+  description = "Name of the App Service Plan"
+  type        = string
+  default     = "plan-imgresize"
+}
