@@ -70,7 +70,7 @@ jobs:
           echo "🔎 Checking for existing resources to import..."
 
           SUB_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}
-          RG="ImageResizeRG"
+          RG="rg-image-resize"
 
           if az group show --name $RG &>/dev/null; then
             terraform import azurerm_resource_group.main "/subscriptions/$SUB_ID/resourceGroups/$RG" || true
@@ -101,7 +101,7 @@ jobs:
             -var="service_plan_sku=Y1" \
             -var="location=West Europe"
 
-      # ⚙️ Terraform Apply
+      # ⚙️ Terraform Apply (only on main branch)
       - name: Terraform Apply
         working-directory: ./terraform
         if: github.ref == 'refs/heads/main'
