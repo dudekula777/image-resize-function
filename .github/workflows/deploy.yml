@@ -63,7 +63,11 @@ jobs:
       # 🚀 Terraform Init
       - name: Terraform Init
         working-directory: ./terraform
-        run: terraform init -input=false
+        run: |
+            mkdir -p $HOME/.terraform.d/plugin-cache
+            terraform init -input=false -upgrade \
+            -plugin-dir=$HOME/.terraform.d/plugin-cache
+
 
       # ✅ Terraform Validate
       - name: Terraform Validate
