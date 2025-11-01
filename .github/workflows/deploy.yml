@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # needed for Azure OIDC login
+  id-token: none
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: 'src'
@@ -70,18 +70,30 @@ jobs:
           echo "🔎 Checking for existing resources to import..."
 
           SUB_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}
-          RG="rg-image-resize"
+          RG="ImageResizeRG"
 
+          # Import Resource Group if exists
           if az group show --name $RG &>/dev/null; then
+            echo "📦 Importing resource group $RG..."
             terraform import azurerm_resource_group.main "/subscriptions/$SUB_ID/resourceGroups/$RG" || true
           fi
 
+          # Import Storage Account
           if az storage account show --name stimgresize --resource-group $RG &>/dev/null; then
+            echo "💾 Importing storage account stimgresize..."
             terraform import azurerm_storage_account.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/stimgresize" || true
           fi
 
+          # Import Application Insights
           if az monitor app-insights component show --app app-insights-image-resize --resource-group $RG &>/dev/null; then
+            echo "📈 Importing Application Insights..."
             terraform import azurerm_application_insights.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/microsoft.insights/components/app-insights-image-resize" || true
+          fi
+
+          # Import Function App
+          if az functionapp show --name func-imgresize --resource-group $RG &>/dev/null; then
+            echo "⚙️ Importing Function App func-imgresize..."
+            terraform import azurerm_windows_function_app.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/sites/func-imgresize" || true
           fi
 
           echo "✅ Import step completed."
@@ -131,7 +143,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -141,29 +153,13 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # 🔐 Login again for deployment (needed for azure/functions-action)
-      - name: Azure Login (for Function Deploy)
-        uses: azure/login@v2
-        with:
-          creds: |
-            {
-              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
-              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
-              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
-              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
-            }
-          auth-type: SERVICE_PRINCIPAL
-
-      # 🚀 Deploy Function App using RBAC (no publish profile needed)
       - name: Deploy to Azure Function App
         uses: azure/functions-action@v1
+        id: fa
         with:
           app-name: func-imgresize
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          respect-funcignore: true
-          enable-oryx-build: true
-          scm-do-build-during-deployment: true
-          remote-build: true
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
 
       - name: Verify deployment
         run: echo "✅ Function app deployed successfully!"
