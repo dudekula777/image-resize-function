@@ -98,7 +98,7 @@ jobs:
           terraform plan -input=false \
             -var="storage_account_name=stimgresize" \
             -var="function_app_name=func-imgresize" \
-            -var="service_plan_sku=B1"
+            -var="service_plan_sku=Y1"
 
       # ⚙️ Terraform Apply
       - name: Terraform Apply
