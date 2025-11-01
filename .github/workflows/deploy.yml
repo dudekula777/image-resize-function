@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read   # Required for actions/checkout
+  id-token: none   # Explicitly disable OIDC (we’re using client secret)
+
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: 'src'
   PYTHON_VERSION: '3.11'
@@ -27,15 +31,17 @@ jobs:
       with:
         terraform_version: '1.5.0'
 
-    # 🔐 Authenticate to Azure using Service Principal credentials
+    # 🔐 Login to Azure using a Service Principal (client secret)
     - name: Login to Azure
       uses: azure/login@v2
       with:
-        auth-type: SERVICE_PRINCIPAL
-        client-id: ${{ secrets.ARM_CLIENT_ID }}
-        tenant-id: ${{ secrets.ARM_TENANT_ID }}
-        subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-        client-secret: ${{ secrets.ARM_CLIENT_SECRET }}
+        creds: |
+          {
+            "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+            "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+            "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+            "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+          }
 
     # 🌍 Export Terraform environment variables
     - name: Set Terraform environment variables
@@ -44,6 +50,10 @@ jobs:
         echo "ARM_TENANT_ID=${{ secrets.ARM_TENANT_ID }}" >> $GITHUB_ENV
         echo "ARM_CLIENT_ID=${{ secrets.ARM_CLIENT_ID }}" >> $GITHUB_ENV
         echo "ARM_CLIENT_SECRET=${{ secrets.ARM_CLIENT_SECRET }}" >> $GITHUB_ENV
+
+    # 🧠 Verify Azure context (debug)
+    - name: Verify Azure account
+      run: az account show
 
     # 🚀 Terraform Init
     - name: Terraform Init
