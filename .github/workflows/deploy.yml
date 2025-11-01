@@ -14,7 +14,7 @@ on:
 
 permissions:
   contents: read
-  id-token: none
+  id-token: write   # Required for OIDC authentication (future use)
 
 env:
   RESOURCE_GROUP: ImageResizeRG
@@ -25,6 +25,7 @@ env:
   LOCATION: "West Europe"
   PYTHON_VERSION: "3.11"
   AZURE_FUNCTIONAPP_PACKAGE_PATH: "src"
+  TF_WORKING_DIR: "./terraform"
 
 jobs:
   terraform:
@@ -33,7 +34,7 @@ jobs:
     environment: production
 
     steps:
-      # 🧩 Checkout source code
+      # 🧩 Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -54,108 +55,107 @@ jobs:
               "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
               "tenantId": "${{ secrets.ARM_TENANT_ID }}"
             }
-          auth-type: SERVICE_PRINCIPAL
 
       # ✅ Verify Azure Login
       - name: Verify Azure account
         run: az account show
 
-      # 🪣 Create tfvars file for Terraform
+      # 🪣 Create terraform.tfvars dynamically
       - name: Create terraform.tfvars
-        working-directory: ./terraform
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           cat > terraform.tfvars <<EOF
-          subscription_id = "${{ secrets.ARM_SUBSCRIPTION_ID }}"
-          tenant_id       = "${{ secrets.ARM_TENANT_ID }}"
-          client_id       = "${{ secrets.ARM_CLIENT_ID }}"
-          client_secret   = "${{ secrets.ARM_CLIENT_SECRET }}"
-          resource_group_name = "${{ env.RESOURCE_GROUP }}"
-          storage_account_name = "${{ env.STORAGE_ACCOUNT_NAME }}"
-          function_app_name = "${{ env.FUNCTION_APP_NAME }}"
-          app_service_plan_name = "${{ env.APP_SERVICE_PLAN }}"
-          application_insights_name = "${{ env.APP_INSIGHTS_NAME }}"
-          location = "${{ env.LOCATION }}"
-          service_plan_sku = "Y1"
+          subscription_id            = "${{ secrets.ARM_SUBSCRIPTION_ID }}"
+          tenant_id                  = "${{ secrets.ARM_TENANT_ID }}"
+          client_id                  = "${{ secrets.ARM_CLIENT_ID }}"
+          client_secret              = "${{ secrets.ARM_CLIENT_SECRET }}"
+          resource_group_name        = "${{ env.RESOURCE_GROUP }}"
+          storage_account_name       = "${{ env.STORAGE_ACCOUNT_NAME }}"
+          function_app_name          = "${{ env.FUNCTION_APP_NAME }}"
+          app_service_plan_name      = "${{ env.APP_SERVICE_PLAN }}"
+          application_insights_name  = "${{ env.APP_INSIGHTS_NAME }}"
+          location                   = "${{ env.LOCATION }}"
+          service_plan_sku           = "Y1"
           EOF
-          echo "✅ terraform.tfvars file created successfully."
+          echo "✅ terraform.tfvars created."
 
       # 🚀 Terraform Init
       - name: Terraform Init
-        working-directory: ./terraform
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init -input=false -upgrade
 
       # 🧩 Import existing Azure resources (conditional)
       - name: Import existing Azure resources (conditional)
-        working-directory: ./terraform
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           set -e
-          echo "🔎 Checking and importing existing resources if they already exist..."
+          echo "🔍 Checking and importing existing resources..."
 
           SUB_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}
           RG=${{ env.RESOURCE_GROUP }}
 
-          # Resource Group
-          if az group show --name $RG &>/dev/null; then
-            echo "✅ Resource Group exists — importing..."
-            terraform import azurerm_resource_group.main "/subscriptions/$SUB_ID/resourceGroups/$RG" || true
-          fi
+          function try_import() {
+            local type=$1
+            local cmd=$2
+            local path=$3
+            if eval "$cmd" &>/dev/null; then
+              echo "✅ $type exists — importing..."
+              terraform import $path || true
+            fi
+          }
 
-          # Storage Account
-          if az storage account show --name ${{ env.STORAGE_ACCOUNT_NAME }} --resource-group $RG &>/dev/null; then
-            echo "✅ Storage Account exists — importing..."
-            terraform import azurerm_storage_account.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/${{ env.STORAGE_ACCOUNT_NAME }}" || true
-          fi
+          try_import "Resource Group" \
+            "az group show --name $RG" \
+            "azurerm_resource_group.main /subscriptions/$SUB_ID/resourceGroups/$RG"
 
-          # App Service Plan
-          if az appservice plan show --name ${{ env.APP_SERVICE_PLAN }} --resource-group $RG &>/dev/null; then
-            echo "✅ App Service Plan exists — importing..."
-            terraform import azurerm_app_service_plan.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/serverfarms/${{ env.APP_SERVICE_PLAN }}" || true
-          fi
+          try_import "Storage Account" \
+            "az storage account show --name ${{ env.STORAGE_ACCOUNT_NAME }} --resource-group $RG" \
+            "azurerm_storage_account.main /subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/${{ env.STORAGE_ACCOUNT_NAME }}"
 
-          # Application Insights
-          if az monitor app-insights component show --app ${{ env.APP_INSIGHTS_NAME }} --resource-group $RG &>/dev/null; then
-            echo "✅ Application Insights exists — importing..."
-            terraform import azurerm_application_insights.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Insights/components/${{ env.APP_INSIGHTS_NAME }}" || true
-          fi
+          try_import "App Service Plan" \
+            "az appservice plan show --name ${{ env.APP_SERVICE_PLAN }} --resource-group $RG" \
+            "azurerm_service_plan.main /subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/serverfarms/${{ env.APP_SERVICE_PLAN }}"
 
-          # Function App
-          if az functionapp show --name ${{ env.FUNCTION_APP_NAME }} --resource-group $RG &>/dev/null; then
-            echo "✅ Function App exists — importing..."
-            terraform import azurerm_linux_function_app.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/sites/${{ env.FUNCTION_APP_NAME }}" || true
-          fi
+          try_import "Application Insights" \
+            "az monitor app-insights component show --app ${{ env.APP_INSIGHTS_NAME }} --resource-group $RG" \
+            "azurerm_application_insights.main /subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Insights/components/${{ env.APP_INSIGHTS_NAME }}"
 
-          echo "✅ Import step completed successfully."
+          try_import "Function App" \
+            "az functionapp show --name ${{ env.FUNCTION_APP_NAME }} --resource-group $RG" \
+            "azurerm_linux_function_app.main /subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/sites/${{ env.FUNCTION_APP_NAME }}"
 
-      # ✅ Terraform Validate
+          echo "✅ Import step complete."
+
+      # ✅ Validate Terraform configuration
       - name: Terraform Validate
-        working-directory: ./terraform
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform validate
 
-      # 📋 Terraform Plan
+      # 📋 Terraform Plan (upload plan file)
       - name: Terraform Plan
-        working-directory: ./terraform
-        run: terraform plan -input=false -var-file=terraform.tfvars
+        id: plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform plan -input=false -out=tfplan -var-file=terraform.tfvars
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
 
       # ⚙️ Terraform Apply
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event.inputs.destroy == 'false'
-        working-directory: ./terraform
-        run: terraform apply -auto-approve -input=false -var-file=terraform.tfvars
+        if: success() && github.ref == 'refs/heads/main' && github.event.inputs.destroy == 'false'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve tfplan
 
-      # 🧨 Terraform Destroy (manual)
-      - name: Terraform Destroy
-        if: github.event.inputs.destroy == 'true'
-        working-directory: ./terraform
-        run: |
-          echo "⚠️ Destroying all resources..."
-          terraform destroy -auto-approve -input=false -var-file=terraform.tfvars
-
+      
   # 🚀 Deploy Function App Code
   deploy-function:
-    name: Deploy Function Code
+    name: Deploy Azure Function Code
     runs-on: ubuntu-latest
     needs: terraform
-    if: github.ref == 'refs/heads/main' && github.event.inputs.destroy == 'false'
+    if: success() && github.ref == 'refs/heads/main' && github.event.inputs.destroy == 'false'
 
     steps:
       - name: Checkout code
