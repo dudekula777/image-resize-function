@@ -47,10 +47,10 @@ resource "azurerm_application_insights" "main" {
 # 🔹 Service Plan (Serverless Consumption Plan)
 resource "azurerm_service_plan" "main" {
   name                = var.service_plan_name
-  location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
   os_type             = "Linux"
-  sku_name            = "Y1"
+  sku_name            = var.service_plan_sku
 }
 
 # 🔹 Function App
