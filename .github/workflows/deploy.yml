@@ -14,7 +14,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write   # Required for OIDC authentication
 
 env:
   RESOURCE_GROUP: ImageResizeRG
@@ -117,7 +117,7 @@ jobs:
             "azurerm_storage_account.main" \
             "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/${{ env.STORAGE_ACCOUNT_NAME }}"
 
-          # FIXED: Microsoft.Web/serverFarms (not lowercase!)
+          # ✅ FIXED: Correct App Service Plan path (capital F in serverFarms)
           try_import "App Service Plan" \
             "az appservice plan show --name ${{ env.APP_SERVICE_PLAN }} --resource-group $RG" \
             "azurerm_service_plan.main" \
@@ -146,6 +146,7 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform plan -input=false -out=tfplan -var-file=terraform.tfvars
 
+      # 📦 Upload plan artifact
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
@@ -166,7 +167,7 @@ jobs:
           echo "⚠️ Destroying Terraform-managed resources..."
           terraform destroy -auto-approve -var-file=terraform.tfvars
 
-  # 🚀 Deploy Function App Code
+  # 🚀 Deploy Azure Function Code
   deploy-function:
     name: Deploy Azure Function Code
     runs-on: ubuntu-latest
@@ -177,20 +178,36 @@ jobs:
       (github.event_name != 'workflow_dispatch' || github.event.inputs.destroy == 'false')
 
     steps:
+      # 1️⃣ Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2️⃣ Setup Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # 3️⃣ Login to Azure (required for deploy step)
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: |
+            {
+              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+            }
+
+      # 4️⃣ Install dependencies
       - name: Install dependencies
         working-directory: ./src/function_app
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      # 5️⃣ Deploy Function App Code
       - name: Deploy to Azure Function App
         uses: azure/functions-action@v1
         with:
@@ -198,5 +215,6 @@ jobs:
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
 
+      # 6️⃣ Verify Deployment
       - name: Verify Deployment
         run: echo "✅ Azure Function App deployed successfully!"
