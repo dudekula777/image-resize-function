@@ -1,27 +1,42 @@
 variable "resource_group_name" {
   description = "Name of the resource group"
   type        = string
-  default     = "ImageResizeRG"
+  default     = "rg-image-resize"
 }
 
 variable "location" {
-  description = "Azure region"
+  description = "Azure region for deployment"
   type        = string
   default     = "East US"
 }
 
 variable "storage_account_name" {
-  description = "Name of the storage account"
+  description = "Prefix for storage account name"
   type        = string
+  default     = "imageresize"
 }
 
 variable "function_app_name" {
-  description = "Name of the function app"
+  description = "Prefix for function app name"
   type        = string
+  default     = "image-resize-func"
 }
 
 variable "python_version" {
-  description = "Python version for function app"
+  description = "Python runtime version for Azure Function"
   type        = string
-  default     = "3.11"
+  default     = "3.10"
+}
+
+# 👇 Add these missing ones
+variable "app_insights_name" {
+  description = "Name of the Application Insights resource"
+  type        = string
+  default     = "app-insights-image-resize"
+}
+
+variable "service_plan_name" {
+  description = "Name of the App Service Plan"
+  type        = string
+  default     = "asp-image-resize"
 }
