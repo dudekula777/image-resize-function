@@ -96,33 +96,41 @@ jobs:
 
           function try_import() {
             local type=$1
-            local cmd=$2
-            local path=$3
-            if eval "$cmd" &>/dev/null; then
+            local check_cmd=$2
+            local tf_resource=$3
+            local tf_path=$4
+            if eval "$check_cmd" &>/dev/null; then
               echo "✅ $type exists — importing..."
-              terraform import $path || true
+              terraform import $tf_resource "$tf_path" || true
+            else
+              echo "ℹ️ $type not found — will be created by Terraform."
             fi
           }
 
           try_import "Resource Group" \
             "az group show --name $RG" \
-            "azurerm_resource_group.main /subscriptions/$SUB_ID/resourceGroups/$RG"
+            "azurerm_resource_group.main" \
+            "/subscriptions/$SUB_ID/resourceGroups/$RG"
 
           try_import "Storage Account" \
             "az storage account show --name ${{ env.STORAGE_ACCOUNT_NAME }} --resource-group $RG" \
-            "azurerm_storage_account.main /subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/${{ env.STORAGE_ACCOUNT_NAME }}"
+            "azurerm_storage_account.main" \
+            "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/${{ env.STORAGE_ACCOUNT_NAME }}"
 
           try_import "App Service Plan" \
             "az appservice plan show --name ${{ env.APP_SERVICE_PLAN }} --resource-group $RG" \
-            "azurerm_service_plan.main /subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/serverfarms/${{ env.APP_SERVICE_PLAN }}"
+            "azurerm_service_plan.main" \
+            "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/serverfarms/${{ env.APP_SERVICE_PLAN }}"
 
           try_import "Application Insights" \
             "az monitor app-insights component show --app ${{ env.APP_INSIGHTS_NAME }} --resource-group $RG" \
-            "azurerm_application_insights.main /subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Insights/components/${{ env.APP_INSIGHTS_NAME }}"
+            "azurerm_application_insights.main" \
+            "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Insights/components/${{ env.APP_INSIGHTS_NAME }}"
 
           try_import "Function App" \
             "az functionapp show --name ${{ env.FUNCTION_APP_NAME }} --resource-group $RG" \
-            "azurerm_linux_function_app.main /subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/sites/${{ env.FUNCTION_APP_NAME }}"
+            "azurerm_linux_function_app.main" \
+            "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/sites/${{ env.FUNCTION_APP_NAME }}"
 
           echo "✅ Import step complete."
 
@@ -145,17 +153,27 @@ jobs:
 
       # ⚙️ Terraform Apply
       - name: Terraform Apply
-        if: success() && github.ref == 'refs/heads/main' && github.event.inputs.destroy == 'false'
+        if: success() && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || github.event.inputs.destroy == 'false')
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve tfplan
 
-      
+      # 🧨 Terraform Destroy (manual trigger only)
+      - name: Terraform Destroy
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.destroy == 'true'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "⚠️ Destroying all Terraform-managed resources..."
+          terraform destroy -auto-approve -var-file=terraform.tfvars
+
   # 🚀 Deploy Function App Code
   deploy-function:
     name: Deploy Azure Function Code
     runs-on: ubuntu-latest
     needs: terraform
-    if: success() && github.ref == 'refs/heads/main' && github.event.inputs.destroy == 'false'
+    if: |
+      success() &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_dispatch' || github.event.inputs.destroy == 'false')
 
     steps:
       - name: Checkout code
@@ -180,4 +198,4 @@ jobs:
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
 
       - name: Verify Deployment
-        run: echo "✅ Function App deployed successfully!"
+        run: echo "✅ Azure Function App deployed successfully!"
