@@ -1,3 +1,6 @@
+# ────────────────────────────────────────────────
+# Basic Configuration
+# ────────────────────────────────────────────────
 variable "resource_group_name" {
   description = "Name of the resource group"
   type        = string
@@ -10,14 +13,17 @@ variable "location" {
   default     = "West Europe"
 }
 
+# ────────────────────────────────────────────────
+# Storage Account and Function App
+# ────────────────────────────────────────────────
 variable "storage_account_name" {
-  description = "Prefix for storage account name"
+  description = "Name of the Storage Account"
   type        = string
   default     = "imageresize"
 }
 
 variable "function_app_name" {
-  description = "Prefix for function app name"
+  description = "Name of the Azure Function App"
   type        = string
   default     = "image-resize-func"
 }
@@ -28,26 +34,30 @@ variable "python_version" {
   default     = "3.10"
 }
 
-# 👇 Add these missing ones
-variable "app_insights_name" {
+# ────────────────────────────────────────────────
+# App Service and Monitoring
+# ────────────────────────────────────────────────
+variable "app_service_plan_name" {
+  description = "Name of the App Service Plan"
+  type        = string
+  default     = "plan-imgresize"
+}
+
+variable "application_insights_name" {
   description = "Name of the Application Insights resource"
   type        = string
   default     = "app-insights-image-resize"
 }
 
-variable "service_plan_name" {
-  description = "Name of the App Service Plan"
-  type        = string
-  default     = "asp-image-resize"
-}
-
-# 🆕 Added to fix pipeline error
 variable "service_plan_sku" {
-  description = "SKU for the App Service Plan (e.g. F1, B1)"
+  description = "SKU for the App Service Plan (e.g. F1, B1, Y1)"
   type        = string
   default     = "F1"
 }
 
+# ────────────────────────────────────────────────
+# Azure Credentials
+# ────────────────────────────────────────────────
 variable "subscription_id" {
   description = "Azure subscription ID"
   type        = string
@@ -70,25 +80,4 @@ variable "client_secret" {
   description = "Azure client secret"
   type        = string
   default     = ""
-}
-
-variable "application_insights_name" {
-  description = "Name of the Application Insights resource"
-  type        = string
-  default     = "app-insights-image-resize"
-}
-
-variable "app_service_plan_name" {
-  description = "Name of the App Service Plan"
-  type        = string
-  default     = "plan-imgresize"
-}
-variable "application_insights_name" {
-  description = "Name of the Application Insights instance"
-  type        = string
-}
-
-variable "app_service_plan_name" {
-  description = "Name of the App Service Plan"
-  type        = string
 }
