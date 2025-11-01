@@ -1,24 +1,37 @@
-# Configure the Azure provider
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.110.0"
+    }
+  }
+}
+
+# 🔹 Azure provider
 provider "azurerm" {
   features {}
 }
 
-# Create Resource Group
+# 🔹 Resource Group
 resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
   location = var.location
 }
 
-# Create Storage Account
+# 🔹 Storage Account
 resource "azurerm_storage_account" "main" {
-  name                     = var.storage_account_name
+  name                     = lower(replace(var.storage_account_name, "/[^a-z0-9]/", ""))
   resource_group_name      = azurerm_resource_group.main.name
   location                 = azurerm_resource_group.main.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
+  min_tls_version          = "TLS1_2"
+  allow_blob_public_access = false
 }
 
-# Create Application Insights
+# 🔹 Application Insights
 resource "azurerm_application_insights" "main" {
   name                = var.app_insights_name
   location            = azurerm_resource_group.main.location
@@ -26,29 +39,35 @@ resource "azurerm_application_insights" "main" {
   application_type    = "web"
 }
 
-# Create Service Plan (for Function App)
+# 🔹 Service Plan (Serverless Consumption Plan)
 resource "azurerm_service_plan" "main" {
   name                = var.service_plan_name
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   os_type             = "Linux"
-  sku_name            = "B1" # Consumption Plan
+  sku_name            = "Y1" # ✅ Free serverless plan
 }
 
-# Create Linux Function App
+# 🔹 Function App
 resource "azurerm_linux_function_app" "main" {
   name                       = var.function_app_name
-  resource_group_name        = azurerm_resource_group.main.name
   location                   = azurerm_resource_group.main.location
+  resource_group_name        = azurerm_resource_group.main.name
   service_plan_id            = azurerm_service_plan.main.id
   storage_account_name       = azurerm_storage_account.main.name
   storage_account_access_key = azurerm_storage_account.main.primary_access_key
+  https_only                 = true
 
   site_config {
-    application_insights_key = azurerm_application_insights.main.instrumentation_key
+    application_stack {
+      python_version = var.python_version
+    }
   }
 
   app_settings = {
-    FUNCTIONS_WORKER_RUNTIME = "python"
+    FUNCTIONS_WORKER_RUNTIME             = "python"
+    APPINSIGHTS_INSTRUMENTATIONKEY       = azurerm_application_insights.main.instrumentation_key
+    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
+    AzureWebJobsStorage                  = azurerm_storage_account.main.primary_connection_string
   }
 }
