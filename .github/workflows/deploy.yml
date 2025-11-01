@@ -41,7 +41,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.5.0"
+          terraform_version: "1.6.2"
 
       # 🔐 Login to Azure
       - name: Login to Azure
@@ -60,12 +60,31 @@ jobs:
       - name: Verify Azure account
         run: az account show
 
+      # 🪣 Create tfvars file for Terraform
+      - name: Create terraform.tfvars
+        working-directory: ./terraform
+        run: |
+          cat > terraform.tfvars <<EOF
+          subscription_id = "${{ secrets.ARM_SUBSCRIPTION_ID }}"
+          tenant_id       = "${{ secrets.ARM_TENANT_ID }}"
+          client_id       = "${{ secrets.ARM_CLIENT_ID }}"
+          client_secret   = "${{ secrets.ARM_CLIENT_SECRET }}"
+          resource_group_name = "${{ env.RESOURCE_GROUP }}"
+          storage_account_name = "${{ env.STORAGE_ACCOUNT_NAME }}"
+          function_app_name = "${{ env.FUNCTION_APP_NAME }}"
+          app_service_plan_name = "${{ env.APP_SERVICE_PLAN }}"
+          application_insights_name = "${{ env.APP_INSIGHTS_NAME }}"
+          location = "${{ env.LOCATION }}"
+          service_plan_sku = "Y1"
+          EOF
+          echo "✅ terraform.tfvars file created successfully."
+
       # 🚀 Terraform Init
       - name: Terraform Init
         working-directory: ./terraform
         run: terraform init -input=false -upgrade
 
-      # 🧩 Import existing Azure resources if present
+      # 🧩 Import existing Azure resources (conditional)
       - name: Import existing Azure resources (conditional)
         working-directory: ./terraform
         run: |
@@ -78,31 +97,31 @@ jobs:
           # Resource Group
           if az group show --name $RG &>/dev/null; then
             echo "✅ Resource Group exists — importing..."
-            terraform import -input=false azurerm_resource_group.main "/subscriptions/$SUB_ID/resourceGroups/$RG" || true
+            terraform import azurerm_resource_group.main "/subscriptions/$SUB_ID/resourceGroups/$RG" || true
           fi
 
           # Storage Account
           if az storage account show --name ${{ env.STORAGE_ACCOUNT_NAME }} --resource-group $RG &>/dev/null; then
             echo "✅ Storage Account exists — importing..."
-            terraform import -input=false azurerm_storage_account.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/${{ env.STORAGE_ACCOUNT_NAME }}" || true
+            terraform import azurerm_storage_account.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/${{ env.STORAGE_ACCOUNT_NAME }}" || true
           fi
 
           # App Service Plan
           if az appservice plan show --name ${{ env.APP_SERVICE_PLAN }} --resource-group $RG &>/dev/null; then
             echo "✅ App Service Plan exists — importing..."
-            terraform import -input=false azurerm_app_service_plan.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/serverfarms/${{ env.APP_SERVICE_PLAN }}" || true
+            terraform import azurerm_app_service_plan.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/serverfarms/${{ env.APP_SERVICE_PLAN }}" || true
           fi
 
           # Application Insights
           if az monitor app-insights component show --app ${{ env.APP_INSIGHTS_NAME }} --resource-group $RG &>/dev/null; then
             echo "✅ Application Insights exists — importing..."
-            terraform import -input=false azurerm_application_insights.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Insights/components/${{ env.APP_INSIGHTS_NAME }}" || true
+            terraform import azurerm_application_insights.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Insights/components/${{ env.APP_INSIGHTS_NAME }}" || true
           fi
 
           # Function App
           if az functionapp show --name ${{ env.FUNCTION_APP_NAME }} --resource-group $RG &>/dev/null; then
             echo "✅ Function App exists — importing..."
-            terraform import -input=false azurerm_linux_function_app.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/sites/${{ env.FUNCTION_APP_NAME }}" || true
+            terraform import azurerm_linux_function_app.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/sites/${{ env.FUNCTION_APP_NAME }}" || true
           fi
 
           echo "✅ Import step completed successfully."
@@ -115,57 +134,23 @@ jobs:
       # 📋 Terraform Plan
       - name: Terraform Plan
         working-directory: ./terraform
-        run: |
-          terraform plan -input=false \
-            -var="subscription_id=${{ secrets.ARM_SUBSCRIPTION_ID }}" \
-            -var="tenant_id=${{ secrets.ARM_TENANT_ID }}" \
-            -var="client_id=${{ secrets.ARM_CLIENT_ID }}" \
-            -var="client_secret=${{ secrets.ARM_CLIENT_SECRET }}" \
-            -var="resource_group_name=${{ env.RESOURCE_GROUP }}" \
-            -var="storage_account_name=${{ env.STORAGE_ACCOUNT_NAME }}" \
-            -var="function_app_name=${{ env.FUNCTION_APP_NAME }}" \
-            -var="app_service_plan_name=${{ env.APP_SERVICE_PLAN }}" \
-            -var="application_insights_name=${{ env.APP_INSIGHTS_NAME }}" \
-            -var="location=${{ env.LOCATION }}" \
-            -var="service_plan_sku=Y1"
+        run: terraform plan -input=false -var-file=terraform.tfvars
 
-      # ⚙️ Terraform Apply (only on main branch)
+      # ⚙️ Terraform Apply
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event.inputs.destroy == 'false'
         working-directory: ./terraform
-        run: |
-          terraform apply -auto-approve -input=false \
-            -var="subscription_id=${{ secrets.ARM_SUBSCRIPTION_ID }}" \
-            -var="tenant_id=${{ secrets.ARM_TENANT_ID }}" \
-            -var="client_id=${{ secrets.ARM_CLIENT_ID }}" \
-            -var="client_secret=${{ secrets.ARM_CLIENT_SECRET }}" \
-            -var="resource_group_name=${{ env.RESOURCE_GROUP }}" \
-            -var="storage_account_name=${{ env.STORAGE_ACCOUNT_NAME }}" \
-            -var="function_app_name=${{ env.FUNCTION_APP_NAME }}" \
-            -var="app_service_plan_name=${{ env.APP_SERVICE_PLAN }}" \
-            -var="application_insights_name=${{ env.APP_INSIGHTS_NAME }}" \
-            -var="location=${{ env.LOCATION }}" \
-            -var="service_plan_sku=Y1"
+        run: terraform apply -auto-approve -input=false -var-file=terraform.tfvars
 
-      # 🧨 Optional Terraform Destroy (manual)
+      # 🧨 Terraform Destroy (manual)
       - name: Terraform Destroy
         if: github.event.inputs.destroy == 'true'
         working-directory: ./terraform
         run: |
-          echo "⚠️ Destroying resources as requested..."
-          terraform destroy -auto-approve -input=false \
-            -var="subscription_id=${{ secrets.ARM_SUBSCRIPTION_ID }}" \
-            -var="tenant_id=${{ secrets.ARM_TENANT_ID }}" \
-            -var="client_id=${{ secrets.ARM_CLIENT_ID }}" \
-            -var="client_secret=${{ secrets.ARM_CLIENT_SECRET }}" \
-            -var="resource_group_name=${{ env.RESOURCE_GROUP }}" \
-            -var="storage_account_name=${{ env.STORAGE_ACCOUNT_NAME }}" \
-            -var="function_app_name=${{ env.FUNCTION_APP_NAME }}" \
-            -var="app_service_plan_name=${{ env.APP_SERVICE_PLAN }}" \
-            -var="application_insights_name=${{ env.APP_INSIGHTS_NAME }}" \
-            -var="location=${{ env.LOCATION }}" \
-            -var="service_plan_sku=Y1"
+          echo "⚠️ Destroying all resources..."
+          terraform destroy -auto-approve -input=false -var-file=terraform.tfvars
 
+  # 🚀 Deploy Function App Code
   deploy-function:
     name: Deploy Function Code
     runs-on: ubuntu-latest
@@ -194,5 +179,5 @@ jobs:
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
 
-      - name: Verify deployment
-        run: echo "✅ Function app deployed successfully!"
+      - name: Verify Deployment
+        run: echo "✅ Function App deployed successfully!"
