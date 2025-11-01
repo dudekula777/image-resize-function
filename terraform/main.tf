@@ -2,18 +2,17 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.50.0" # ✅ or higher
+      version = "~> 4.0"
     }
   }
 
-  required_version = ">= 1.3.0"
+  required_version = ">= 1.5.0"
 }
 
-
-# 🔹 Azure provider
 provider "azurerm" {
   features {}
 }
+
 
 # 🔹 Resource Group
 resource "azurerm_resource_group" "main" {
