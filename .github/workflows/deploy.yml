@@ -17,60 +17,58 @@ jobs:
     environment: production
 
     steps:
+    # 🧩 Checkout source code
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # 🧰 Setup Terraform
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: '1.5.0'
 
-    # ✅ Login to Azure using Service Principal credentials (from GitHub secret)
-    - name: Configure Azure credentials
+    # 🔐 Authenticate to Azure using Service Principal credentials
+    - name: Login to Azure
       uses: azure/login@v2
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        auth-type: SERVICE_PRINCIPAL
+        client-id: ${{ secrets.ARM_CLIENT_ID }}
+        tenant-id: ${{ secrets.ARM_TENANT_ID }}
+        subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        client-secret: ${{ secrets.ARM_CLIENT_SECRET }}
 
-    # ✅ Export Terraform environment variables from GitHub Secrets
+    # 🌍 Export Terraform environment variables
     - name: Set Terraform environment variables
-      shell: bash
       run: |
-        {
-          echo "ARM_SUBSCRIPTION_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}"
-          echo "ARM_TENANT_ID=${{ secrets.ARM_TENANT_ID }}"
-          echo "ARM_CLIENT_ID=${{ secrets.ARM_CLIENT_ID }}"
-          echo "ARM_CLIENT_SECRET=${{ secrets.ARM_CLIENT_SECRET }}"
-        } >> $GITHUB_ENV
-      # (Optional) mask sensitive data so it won’t appear in logs
-      env:
-        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+        echo "ARM_SUBSCRIPTION_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}" >> $GITHUB_ENV
+        echo "ARM_TENANT_ID=${{ secrets.ARM_TENANT_ID }}" >> $GITHUB_ENV
+        echo "ARM_CLIENT_ID=${{ secrets.ARM_CLIENT_ID }}" >> $GITHUB_ENV
+        echo "ARM_CLIENT_SECRET=${{ secrets.ARM_CLIENT_SECRET }}" >> $GITHUB_ENV
 
+    # 🚀 Terraform Init
     - name: Terraform Init
       working-directory: ./terraform
       run: terraform init
 
+    # ✅ Terraform Validate
     - name: Terraform Validate
       working-directory: ./terraform
       run: terraform validate
 
+    # 📋 Terraform Plan
     - name: Terraform Plan
       working-directory: ./terraform
-      env:
-        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      run: terraform plan -var="storage_account_name=stimgresize" -var="function_app_name=func-imgresize"
+      run: terraform plan \
+        -var="storage_account_name=stimgresize" \
+        -var="function_app_name=func-imgresize"
 
+    # ⚙️ Terraform Apply (only on main branch)
     - name: Terraform Apply
       working-directory: ./terraform
       if: github.ref == 'refs/heads/main'
-      env:
-        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      run: terraform apply -auto-approve -var="storage_account_name=stimgresize" -var="function_app_name=func-imgresize"
+      run: terraform apply -auto-approve \
+        -var="storage_account_name=stimgresize" \
+        -var="function_app_name=func-imgresize"
 
   deploy-function:
     name: Deploy Function Code
@@ -79,19 +77,23 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
+    # 🧩 Checkout latest code
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # 🐍 Setup Python
     - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
+    # 📦 Install dependencies
     - name: Restore dependencies
       run: |
         cd src/function_app
         pip install -r requirements.txt
 
+    # ☁️ Deploy to Azure Function App
     - name: Deploy to Azure Function App
       uses: azure/functions-action@v1
       id: fa
@@ -100,6 +102,7 @@ jobs:
         package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
         publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
 
+    # ✅ Verify deployment
     - name: Verify deployment
       run: |
         echo "✅ Function app deployed successfully"
