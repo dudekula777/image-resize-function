@@ -45,7 +45,7 @@ jobs:
             }
           auth-type: SERVICE_PRINCIPAL
 
-      # 🌍 Export environment variables
+      # 🌍 Export Terraform environment variables
       - name: Set Terraform environment variables
         run: |
           echo "ARM_SUBSCRIPTION_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}" >> $GITHUB_ENV
@@ -62,28 +62,28 @@ jobs:
         working-directory: ./terraform
         run: terraform init -input=false -upgrade
 
-      # 🧩 Import existing resources if found
+      # 🧩 Import existing Azure resources (if present)
       - name: Import existing Azure resources
         working-directory: ./terraform
         run: |
           set -e
           echo "🔎 Checking for existing resources to import..."
-          
-          # Resource Group
-          if az group show --name ImageResizeRG &>/dev/null; then
-            terraform import azurerm_resource_group.main "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/ImageResizeRG" || true
+
+          SUB_ID=${{ secrets.ARM_SUBSCRIPTION_ID }}
+          RG="ImageResizeRG"
+
+          if az group show --name $RG &>/dev/null; then
+            terraform import azurerm_resource_group.main "/subscriptions/$SUB_ID/resourceGroups/$RG" || true
           fi
-          
-          # Storage Account
-          if az storage account show --name stimgresize --resource-group ImageResizeRG &>/dev/null; then
-            terraform import azurerm_storage_account.main "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/ImageResizeRG/providers/Microsoft.Storage/storageAccounts/stimgresize" || true
+
+          if az storage account show --name stimgresize --resource-group $RG &>/dev/null; then
+            terraform import azurerm_storage_account.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/stimgresize" || true
           fi
-          
-          # Application Insights
-          if az monitor app-insights component show --app app-insights-image-resize --resource-group ImageResizeRG &>/dev/null; then
-            terraform import azurerm_application_insights.main "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/ImageResizeRG/providers/microsoft.insights/components/app-insights-image-resize" || true
+
+          if az monitor app-insights component show --app app-insights-image-resize --resource-group $RG &>/dev/null; then
+            terraform import azurerm_application_insights.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/microsoft.insights/components/app-insights-image-resize" || true
           fi
-          
+
           echo "✅ Import step completed."
 
       # ✅ Validate Terraform config
@@ -98,7 +98,8 @@ jobs:
           terraform plan -input=false \
             -var="storage_account_name=stimgresize" \
             -var="function_app_name=func-imgresize" \
-            -var="service_plan_sku=Y1"
+            -var="service_plan_sku=Y1" \
+            -var="location=West Europe"
 
       # ⚙️ Terraform Apply
       - name: Terraform Apply
@@ -108,7 +109,8 @@ jobs:
           terraform apply -auto-approve -input=false \
             -var="storage_account_name=stimgresize" \
             -var="function_app_name=func-imgresize" \
-            -var="service_plan_sku=B1"
+            -var="service_plan_sku=Y1" \
+            -var="location=West Europe"
 
   deploy-function:
     name: Deploy Function Code
