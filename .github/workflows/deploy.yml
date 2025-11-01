@@ -45,7 +45,7 @@ jobs:
           terraform_version: "1.6.2"
 
       # 3️⃣ Login to Azure
-      - name: Login to Azure
+      - name: Azure Login via OIDC
         uses: azure/login@v2
         with:
           creds: |
@@ -57,7 +57,7 @@ jobs:
             }
 
       # 4️⃣ Verify Azure Login
-      - name: Verify Azure account
+      - name: Verify Azure Account
         run: az account show
 
       # 5️⃣ Create terraform.tfvars dynamically
@@ -117,7 +117,6 @@ jobs:
             "azurerm_storage_account.main" \
             "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/${{ env.STORAGE_ACCOUNT_NAME }}"
 
-          # ✅ FIXED: Correct App Service Plan path (capital F in serverFarms)
           try_import "App Service Plan" \
             "az appservice plan show --name ${{ env.APP_SERVICE_PLAN }} --resource-group $RG" \
             "azurerm_service_plan.main" \
@@ -188,7 +187,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # 3️⃣ Login to Azure (required for deploy step)
+      # 3️⃣ Login to Azure (required for deployment)
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -207,7 +206,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # 5️⃣ Deploy Function App Code
+      # 5️⃣ Deploy Function App Code (ZIP package)
       - name: Deploy to Azure Function App
         uses: azure/functions-action@v1
         with:
