@@ -40,3 +40,10 @@ variable "service_plan_name" {
   type        = string
   default     = "asp-image-resize"
 }
+
+# 🆕 Added to fix pipeline error
+variable "service_plan_sku" {
+  description = "SKU for the App Service Plan (e.g. F1, B1)"
+  type        = string
+  default     = "B1"
+}
