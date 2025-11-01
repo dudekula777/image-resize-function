@@ -96,6 +96,10 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform plan -input=false \
+            -var="subscription_id=${{ secrets.ARM_SUBSCRIPTION_ID }}" \
+            -var="tenant_id=${{ secrets.ARM_TENANT_ID }}" \
+            -var="client_id=${{ secrets.ARM_CLIENT_ID }}" \
+            -var="client_secret=${{ secrets.ARM_CLIENT_SECRET }}" \
             -var="storage_account_name=stimgresize" \
             -var="function_app_name=func-imgresize" \
             -var="service_plan_sku=Y1" \
@@ -107,6 +111,10 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           terraform apply -auto-approve -input=false \
+            -var="subscription_id=${{ secrets.ARM_SUBSCRIPTION_ID }}" \
+            -var="tenant_id=${{ secrets.ARM_TENANT_ID }}" \
+            -var="client_id=${{ secrets.ARM_CLIENT_ID }}" \
+            -var="client_secret=${{ secrets.ARM_CLIENT_SECRET }}" \
             -var="storage_account_name=stimgresize" \
             -var="function_app_name=func-imgresize" \
             -var="service_plan_sku=Y1" \
