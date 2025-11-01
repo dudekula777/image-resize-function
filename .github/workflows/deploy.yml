@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read       # Required for actions/checkout
-  id-token: none       # Explicitly disable OIDC (using client secret)
+  contents: read
+  id-token: none   # Using client secret, not OIDC
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: 'src'
@@ -32,7 +32,7 @@ jobs:
         with:
           terraform_version: '1.5.0'
 
-      # 🔐 Login to Azure using Service Principal (client secret)
+      # 🔐 Login to Azure using Service Principal
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -54,31 +54,29 @@ jobs:
           echo "ARM_TENANT_ID=${{ secrets.ARM_TENANT_ID }}" >> $GITHUB_ENV
           echo "ARM_CLIENT_ID=${{ secrets.ARM_CLIENT_ID }}" >> $GITHUB_ENV
           echo "ARM_CLIENT_SECRET=${{ secrets.ARM_CLIENT_SECRET }}" >> $GITHUB_ENV
-          echo "TF_PLUGIN_CACHE_DIR=/home/runner/.terraform.d/plugin-cache" >> $GITHUB_ENV
+          echo "TF_PLUGIN_CACHE_DIR=$HOME/.terraform.d/plugin-cache" >> $GITHUB_ENV
 
-      # 🧠 Verify Azure context (debug)
+      # 🧠 Verify Azure context
       - name: Verify Azure account
         run: az account show
 
-      # 🚀 Terraform Init
+      # 🚀 Terraform Init (fixed & upgraded)
       - name: Terraform Init
         working-directory: ./terraform
         run: |
-            mkdir -p $HOME/.terraform.d/plugin-cache
-            terraform init -input=false -upgrade \
-            -plugin-dir=$HOME/.terraform.d/plugin-cache
-
+          mkdir -p $TF_PLUGIN_CACHE_DIR
+          terraform init -input=false -upgrade
 
       # ✅ Terraform Validate
       - name: Terraform Validate
         working-directory: ./terraform
         run: terraform validate
 
-      # 📋 Terraform Plan (optimized & fixed)
+      # 📋 Terraform Plan
       - name: Terraform Plan
         working-directory: ./terraform
         run: |
-          terraform plan -input=false -refresh=false \
+          terraform plan -input=false \
             -var="storage_account_name=stimgresize" \
             -var="function_app_name=func-imgresize"
 
@@ -87,7 +85,7 @@ jobs:
         working-directory: ./terraform
         if: github.ref == 'refs/heads/main'
         run: |
-            terraform apply -auto-approve -input=false \
+          terraform apply -auto-approve -input=false \
             -var="storage_account_name=stimgresize" \
             -var="function_app_name=func-imgresize"
 
