@@ -62,9 +62,14 @@ jobs:
         working-directory: ./terraform
         run: terraform init -input=false -upgrade
 
-      # 🧩 Import only if resources already exist
+      # 🧩 Import only if resources already exist (safe + authenticated)
       - name: Import existing Azure resources (conditional)
         working-directory: ./terraform
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
         run: |
           set -e
           echo "🔎 Checking and importing existing resources if present..."
@@ -75,7 +80,7 @@ jobs:
           # Resource Group
           if az group show --name $RG &>/dev/null; then
             echo "✅ Resource group exists — importing..."
-            terraform import azurerm_resource_group.main "/subscriptions/$SUB_ID/resourceGroups/$RG" || true
+            timeout 5m terraform import -input=false azurerm_resource_group.main "/subscriptions/$SUB_ID/resourceGroups/$RG" || true
           else
             echo "🆕 Resource group does not exist — will be created by Terraform."
           fi
@@ -83,15 +88,15 @@ jobs:
           # Storage Account
           if az storage account show --name stimgresize --resource-group $RG &>/dev/null; then
             echo "✅ Storage account exists — importing..."
-            terraform import azurerm_storage_account.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/stimgresize" || true
+            timeout 5m terraform import -input=false azurerm_storage_account.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/stimgresize" || true
           else
             echo "🆕 Storage account does not exist — will be created by Terraform."
           fi
 
-          # App Insights
+          # Application Insights
           if az monitor app-insights component show --app app-insights-image-resize --resource-group $RG &>/dev/null; then
             echo "✅ App Insights exists — importing..."
-            terraform import azurerm_application_insights.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/microsoft.insights/components/app-insights-image-resize" || true
+            timeout 5m terraform import -input=false azurerm_application_insights.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/microsoft.insights/components/app-insights-image-resize" || true
           else
             echo "🆕 App Insights does not exist — will be created by Terraform."
           fi
@@ -99,12 +104,12 @@ jobs:
           # Function App
           if az functionapp show --name func-imgresize --resource-group $RG &>/dev/null; then
             echo "✅ Function App exists — importing..."
-            terraform import azurerm_windows_function_app.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/sites/func-imgresize" || true
+            timeout 5m terraform import -input=false azurerm_linux_function_app.main "/subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Web/sites/func-imgresize" || true
           else
             echo "🆕 Function App does not exist — will be created by Terraform."
           fi
 
-          echo "✅ Import check completed."
+          echo "✅ Import step completed successfully."
 
       # ✅ Validate Terraform config
       - name: Terraform Validate
